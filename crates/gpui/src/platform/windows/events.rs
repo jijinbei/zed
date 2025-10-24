@@ -30,6 +30,13 @@ pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 const AUTO_HIDE_TASKBAR_THICKNESS_PX: i32 = 1;
 
+// Japanese IME control virtual keys
+const VK_OEM_ATTN: VIRTUAL_KEY = VIRTUAL_KEY(0xF0); // Alphanumeric/Katakana key
+const VK_OEM_COPY: VIRTUAL_KEY = VIRTUAL_KEY(0xF2); // Copy key
+const VK_OEM_AUTO: VIRTUAL_KEY = VIRTUAL_KEY(0xF3); // Auto key (IME ON)
+const VK_OEM_ENLW: VIRTUAL_KEY = VIRTUAL_KEY(0xF4); // ENLW key (IME OFF)
+const VK_OEM_BACKTAB: VIRTUAL_KEY = VIRTUAL_KEY(0xF5); // BackTab key
+
 impl WindowsWindowInner {
     pub(crate) fn handle_msg(
         self: &Rc<Self>,
@@ -1343,7 +1350,14 @@ where
         }
         vkey => {
             let vkey = if vkey == VK_PROCESSKEY {
-                VIRTUAL_KEY(unsafe { ImmGetVirtualKey(handle) } as u16)
+                let imm_vkey = unsafe { ImmGetVirtualKey(handle) };
+                if imm_vkey > 0 {
+                    VIRTUAL_KEY(imm_vkey as u16)
+                } else {
+                    // ImmGetVirtualKey can return 0 or invalid values for certain IME operations.
+                    // In these cases, we should not process the key event.
+                    return None;
+                }
             } else {
                 vkey
             };
@@ -1398,6 +1412,19 @@ fn parse_immutable(vkey: VIRTUAL_KEY) -> Option<String> {
             VK_F22 => "f22",
             VK_F23 => "f23",
             VK_F24 => "f24",
+            // Japanese IME control keys
+            VK_OEM_ATTN => "ime_alphanumeric",
+            VK_OEM_AUTO => "ime_on",
+            VK_OEM_ENLW => "ime_off",
+            // Standard IME keys (VK_KANA = 0x15, VK_KANJI = 0x19, etc.)
+            VIRTUAL_KEY(0x15) => "ime_kana", // VK_KANA / VK_HANGUL
+            VIRTUAL_KEY(0x17) => "ime_junja",
+            VIRTUAL_KEY(0x18) => "ime_final",
+            VIRTUAL_KEY(0x19) => "ime_kanji", // VK_KANJI / VK_HANJA (Zenkaku/Hankaku key)
+            VIRTUAL_KEY(0x1C) => "ime_convert", // VK_CONVERT (Henkan key)
+            VIRTUAL_KEY(0x1D) => "ime_nonconvert", // VK_NONCONVERT (Muhenkan key)
+            VIRTUAL_KEY(0x1A) => "ime_accept",
+            VIRTUAL_KEY(0x1B) => "ime_modechange",
             _ => return None,
         }
         .to_string(),
